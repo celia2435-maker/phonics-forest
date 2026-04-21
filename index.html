@@ -95,10 +95,11 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
 ══════════════════════════════════════ */
 .setup-card{background:#fff;border-radius:14px;border:1.5px solid var(--cream2);padding:14px;margin-bottom:10px;box-shadow:0 2px 6px var(--shadow);}
 .setup-title{font-size:13px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--bark);margin-bottom:10px;}
-.lv-chips{display:flex;gap:6px;flex-wrap:wrap;}
-.lv-chip{padding:7px 14px;border-radius:20px;font-size:12px;font-weight:800;cursor:pointer;border:2px solid transparent;transition:all .15s;color:#fff;user-select:none;}
+.lv-chips{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;}
+.lv-chip{padding:5px 10px;border-radius:20px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid transparent;transition:all .15s;color:#fff;user-select:none;white-space:nowrap;flex-shrink:0;}
 .lv-chip.off{background:var(--cream);color:var(--bark2);border-color:var(--cream2);}
 .pg-grid{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;}
+.pg-chips{display:flex;flex-wrap:wrap;gap:6px;overflow-x:auto;padding-bottom:2px;}
 .pg-c{padding:5px 10px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;border:1.5px solid var(--cream2);background:var(--cream);color:var(--bark);transition:all .15s;font-family:-apple-system,'SF Pro Rounded','SF Pro Display',sans-serif;user-select:none;}
 .pg-c.on{color:#fff;border-color:transparent;}
 .deck-preview{background:var(--leafl);border:1.5px solid var(--leaf);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
@@ -1344,10 +1345,28 @@ const DEMO_RAW=[
 ];
 
 function buildWordObj(d){
-  const w=d.word,l=d.letters,idx=[];
-  let i=w.indexOf(l);
-  while(i!==-1){idx.push(i);i=w.indexOf(l,i+1);}
-  return{...d,indices:idx};
+  const w=d.word,idx=[];
+  // Try letters field first
+  let l=d.letters||'';
+  if(l){
+    let i=w.indexOf(l);
+    while(i!==-1){idx.push(i);i=w.indexOf(l,i+1);}
+  }
+  // If no match found, try phonicsGroup stripped of slashes as fallback
+  if(!idx.length&&d.phonicsGroup){
+    const pg=d.phonicsGroup.replace(/[/\\]/g,'').toLowerCase();
+    if(pg&&pg.length>=1&&pg.length<=4){
+      let i=w.indexOf(pg);
+      while(i!==-1){idx.push(i);i=w.indexOf(pg,i+1);}
+      if(idx.length)l=pg;
+    }
+  }
+  // Still no match: mark whole word (index 0, length = word.length)
+  if(!idx.length&&w.length>0){
+    idx.push(0);
+    l=w; // underline whole word
+  }
+  return{...d,letters:l,indices:idx};
 }
 
 let allWords=[];
@@ -1624,12 +1643,12 @@ function buildSetupUI(){
   const groups=[...new Set(cands.map(w=>w.phonicsGroup))].sort();
   const pc=document.getElementById('setupPgChips');
   const allSel=gamePgs.size===0;
-  pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="clearGPg()">全部</div>`
+  pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="clearGPg()" title="全部發音組">全部</div>`
     +groups.map(g=>{
       const on=gamePgs.has(g);
       const lv=allWords.find(w=>w.phonicsGroup===g)?.level||1;
       const cfg=LVC[lv];
-      return`<div class="pg-c${on?' on':''}" style="${on?`background:${cfg.c};`:''}" onclick="toggleGPg('${g}')">${g}</div>`;
+      return`<div class="pg-c${on?' on':''}" style="${on?`background:${cfg.c};color:#fff;border-color:${cfg.c};`:''}" onclick="toggleGPg('${g}')" title="${g}">${g}</div>`;
     }).join('');
   updateDeckPreview();
 }
@@ -1708,6 +1727,7 @@ let timerSec=0,timerInt=null;
 
 function startGame(){
   activeGame='game';
+  document.getElementById('backBtn').style.display='';
   const deck=buildDeck();
   if(!deck.length){alert('單字不足，請調整設定！');return;}
   gameCards=deck;flipped=[];matched=new Set();
@@ -1957,6 +1977,7 @@ function g2UpdatePreview(){
 
 function startGame2(){
   activeGame='game2';
+  document.getElementById('backBtn').style.display='';
   const cands=g2GetCandidates();
   if(!cands.length)return;
   const shuffled=[...cands].sort(()=>Math.random()-.5);
@@ -2236,6 +2257,7 @@ function g3RefreshModeUI(){
 
 function startGame3(){
   activeGame='game3';
+  document.getElementById('backBtn').style.display='';
   const cands=allWords.filter(w=>g3Levels3.has(w.level));
   if(cands.length<4){alert('請選擇更多等級以獲得足夠單字！');return;}
 
@@ -2495,6 +2517,7 @@ function g4BuildDeck(){
 
 function startGame4(){
   activeGame='game4';
+  document.getElementById('backBtn').style.display='';
   const deck=g4BuildDeck();
   if(!deck.length){alert('請先選擇等級或匯入單字！');return;}
 
@@ -2913,11 +2936,15 @@ function g5MakeCard(w,actionType){
 
 function g5BuildDeck(){
   const cands=allWords.filter(w=>g5Lvs.has(w.level));
-  if(!cands.length)return[];
+  if(!cands.length){
+    alert('請先到「📥 匯入」頁面載入單字資料！');
+    return[];
+  }
   g5AllPgs=[...new Set(cands.map(w=>w.phonicsGroup))];
   const dk=[];
-  // 81 regular word cards
-  while(dk.length<81)dk.push(g5MakeCard(cands[Math.floor(Math.random()*cands.length)]));
+  // Regular word cards (min 81, but respect available words)
+  const target=Math.max(81, cands.length*3);
+  while(dk.length<target)dk.push(g5MakeCard(cands[Math.floor(Math.random()*cands.length)]));
   // 4 each: reverse, skip, +2, +4
   G5_ACTION_TYPES.forEach(a=>{
     for(let i=0;i<4;i++){
@@ -2951,7 +2978,9 @@ function g5PopDeck(){
 
 function startGame5(){
   activeGame='game5';
-  const dk=g5BuildDeck();if(!dk.length){alert('請先選擇等級！');return;}
+  document.getElementById('backBtn').style.display='';
+  if(!allWords.length){alert('請先到「📥 匯入」頁面載入單字資料！');return;}
+  const dk=g5BuildDeck();if(!dk.length)return;
   g5Deck=[...dk];g5Discard=[];
   const total=1+g5NpcCount;
   g5Hands=Array.from({length:total},()=>[]);
@@ -2963,7 +2992,7 @@ function startGame5(){
   g5CurrentPg=start.phonicsGroup;
   g5CurrentLv=start.level;
   g5Turn=0;g5Direction=1;g5GameOver=false;g5DrawPending=0;
-  g5Phase='play';g5WildPending=null;
+  g5Phase='play';g5WildPending=null;g5UnoCalled=false;
   clearTimeout(g5NpcTimer);
 
   MAIN_VIEWS.forEach(v=>document.getElementById(v).style.display='none');
@@ -3214,7 +3243,10 @@ function g5DoPlay(playerIdx,cardIdx){
   }
 
   g5Render();g5UpdateSteps();
-  if(playerIdx!==0&&g5Turn!==0)setTimeout(()=>g5NpcDrawAndEnd(playerIdx),600);
+  // If NPC just played, continue NPC turn cycle
+  if(playerIdx!==0){
+    setTimeout(()=>g5NpcDrawAndEnd(playerIdx),600);
+  }
 }
 
 function g5ApplyAction(card,playerIdx){
