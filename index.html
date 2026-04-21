@@ -547,7 +547,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
 .g5-deck-suit{font-size:10px;line-height:1;}
 .g5-deck-cnt{font-size:8px;font-weight:800;color:rgba(255,255,255,.65);}
 .g5-top-card{width:64px;height:88px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.35);position:relative;border:3px solid rgba(255,255,255,.25);padding:4px;}
-.g5-top-word{font-size:11px;font-weight:900;text-align:center;line-height:1.2;color:#3A2E20;padding:0 2px;}
+.g5-top-word{position:relative;z-index:2;font-size:11px;font-weight:900;text-align:center;line-height:1.2;color:#3A2E20;padding:0 2px;}
 .g5-top-word .hl{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:1px;font-weight:900;}
 .g5-top-action{font-size:20px;margin-bottom:2px;}
 .g5-top-action-txt{font-size:9px;font-weight:800;color:#fff;}
@@ -871,7 +871,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
       </div>
       <div class="setup-card">
         <div class="setup-title">🔤 選擇發音組 <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--bark2);">空白 = 全選</span></div>
-        <div class="pg-grid" id="setupPgChips"></div>
+        <div style="font-size:10px;color:var(--bark2);margin-bottom:4px;">可複選多個發音組</div><div class="pg-grid" id="setupPgChips"></div>
       </div>
       <div class="deck-preview">
         <div class="dp-title">📋 牌組預覽</div>
@@ -1345,28 +1345,31 @@ const DEMO_RAW=[
 ];
 
 function buildWordObj(d){
-  const w=d.word,idx=[];
+  const w=(d.word||'').toLowerCase().trim();
+  // Normalize phonicsGroup: trim whitespace
+  const phonicsGroup=(d.phonicsGroup||'').trim();
+  let l=(d.letters||'').trim().toLowerCase();
+  const idx=[];
   // Try letters field first
-  let l=d.letters||'';
   if(l){
     let i=w.indexOf(l);
     while(i!==-1){idx.push(i);i=w.indexOf(l,i+1);}
   }
-  // If no match found, try phonicsGroup stripped of slashes as fallback
-  if(!idx.length&&d.phonicsGroup){
-    const pg=d.phonicsGroup.replace(/[/\\]/g,'').toLowerCase();
-    if(pg&&pg.length>=1&&pg.length<=4){
+  // If no match, try phonicsGroup as literal letters (strip slashes)
+  if(!idx.length&&phonicsGroup){
+    const pg=phonicsGroup.replace(/[/\\]/g,'').toLowerCase().trim();
+    if(pg&&pg.length>=1&&pg.length<=5&&pg!==l){
       let i=w.indexOf(pg);
       while(i!==-1){idx.push(i);i=w.indexOf(pg,i+1);}
       if(idx.length)l=pg;
     }
   }
-  // Still no match: mark whole word (index 0, length = word.length)
+  // Still no match: underline whole word so user sees something
   if(!idx.length&&w.length>0){
     idx.push(0);
-    l=w; // underline whole word
+    if(!l)l=w;
   }
-  return{...d,letters:l,indices:idx};
+  return{...d,word:w,phonicsGroup,letters:l,indices:idx};
 }
 
 let allWords=[];
@@ -1506,7 +1509,7 @@ function buildFilterUI(){
     const on=selLevels.has(lv),cfg=LVC[lv];
     return`<div class="fl-chip${on?'':' off'}" style="${on?`background:${cfg.c};border-color:${cfg.c};`:''}" onclick="toggleFLv(${lv})">${cfg.e} L${lv}</div>`;
   }).join('');
-  const groups=[...new Set(allWords.filter(w=>selLevels.has(w.level)).map(w=>w.phonicsGroup))].sort();
+  const groups=[...new Set(allWords.filter(w=>selLevels.has(w.level)).map(w=>w.phonicsGroup))];
   const pc=document.getElementById('filterPgChips');
   const allSel=selGroups.size===0;
   pc.innerHTML=`<div class="fl-pg${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="clearFPg()">全部</div>`
@@ -1640,7 +1643,7 @@ function buildSetupUI(){
     return`<div class="lv-chip${on?'':' off'}" style="${on?`background:${cfg.c};border-color:${cfg.c};`:''}" onclick="toggleGLv(${lv})">${cfg.e} L${lv}</div>`;
   }).join('');
   const cands=getGameCandidates();
-  const groups=[...new Set(cands.map(w=>w.phonicsGroup))].sort();
+  const groups=[...new Set(cands.map(w=>w.phonicsGroup))];
   const pc=document.getElementById('setupPgChips');
   const allSel=gamePgs.size===0;
   pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="clearGPg()" title="全部發音組">全部</div>`
@@ -1947,7 +1950,7 @@ function g2BuildSetupUI(){
     return`<div class="lv-chip${on?'':' off'}" style="${on?`background:${cfg.c};border-color:${cfg.c};`:''}" onclick="g2ToggleLv(${lv})">${cfg.e} L${lv}</div>`;
   }).join('');
   const cands=g2GetCandidates();
-  const groups=[...new Set(cands.map(w=>w.phonicsGroup))].sort();
+  const groups=[...new Set(cands.map(w=>w.phonicsGroup))];
   const pc=document.getElementById('g2SetupPgChips');
   const allSel=g2Pgs.size===0;
   pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="g2ClearPgs()">全部</div>`
@@ -2943,7 +2946,7 @@ function g5BuildDeck(){
   g5AllPgs=[...new Set(cands.map(w=>w.phonicsGroup))];
   const dk=[];
   // Regular word cards (min 81, but respect available words)
-  const target=Math.max(81, cands.length*3);
+  const target=Math.min(200,Math.max(100, cands.length*2));
   while(dk.length<target)dk.push(g5MakeCard(cands[Math.floor(Math.random()*cands.length)]));
   // 4 each: reverse, skip, +2, +4
   G5_ACTION_TYPES.forEach(a=>{
@@ -3047,8 +3050,9 @@ function g5RenderTop(){
     el.style.cssText=`background:${c.action==='joker'?'#444':cfg.c};width:64px;height:88px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.35);border:3px solid rgba(255,255,255,.25);overflow:hidden;flex-shrink:0;`;
     el.innerHTML=`<div class="g5-top-action">${icons[c.action]||c.action}</div><div class="g5-top-action-txt">${lbls[c.action]||c.action}</div><div class="g5-top-lv">L${c.level}</div>`;
   } else {
-    el.style.cssText=`background:${cfg.l};width:64px;height:88px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.35);border:3px solid ${cfg.c};overflow:hidden;flex-shrink:0;`;
-    el.innerHTML=`<div class="g5-top-lv" style="background:${cfg.c};">L${c.level}</div><div class="g5-top-word">${g5HlWord(c)}</div>`;
+    const sh2=G4_SHAPES[c.level]||G4_SHAPES[1];
+    el.style.cssText=`background:${sh2.bg};width:64px;height:88px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-shadow:0 4px 16px rgba(0,0,0,.35);border:3px solid rgba(255,255,255,.3);overflow:hidden;flex-shrink:0;`;
+    el.innerHTML=`<div style="position:absolute;top:3px;left:3px;z-index:3;">${sh2.bsvg(c.level,16)}</div>${sh2.svg}<div style="position:relative;z-index:2;width:${sh2.cw};margin-top:${sh2.mt};display:flex;align-items:center;justify-content:center;"><div class="g5-top-word">${g5HlWord(c)}</div></div>`;
   }
 }
 
@@ -3105,7 +3109,7 @@ function g5MkWordCard(c,playable,i){
   const border=playable?'border:2.5px solid rgba(255,255,255,.8);':'border:2.5px solid transparent;';
   return`<div class="g5c${playable?' playable':''}" style="background:${sh.bg};${border};overflow:hidden;position:relative;" onclick="g5PlayCard(${i})">
     <div style="position:absolute;top:2px;left:2px;z-index:3;">${sh.bsvg(c.level,14)}</div>
-    ${sh.svg('76%','80%')}
+    ${sh.svg}
     <div style="position:relative;z-index:2;width:${sh.cw};margin-top:${sh.mt};display:flex;align-items:center;justify-content:center;">
       <div class="g5c-word" id="${id}">${g5HlWord(c)}</div>
     </div>
@@ -3372,6 +3376,8 @@ function g5EndPlayerTurn(){
 
 function g5NpcTurn(){
   if(g5GameOver||g5Turn===0)return;
+  // safety: prevent stack overflow
+  if(g5Deck.length===0&&g5Discard.length<=1)return;
   const ni=g5Turn;
   const hand=g5Hands[ni];
 
@@ -3434,7 +3440,8 @@ function g5NpcDrawAndEnd(ni){
   }
   g5Phase='play';
   g5Render();g5UpdateSteps();
-  if(g5Turn!==0)setTimeout(()=>g5NpcTurn(),700);
+  if(g5Turn!==0&&!g5GameOver)setTimeout(()=>g5NpcTurn(),700);
+  else if(g5Turn===0&&!g5GameOver){g5Render();g5UpdateSteps();}
 }
 
 function g5EndGame(winnerIdx){
