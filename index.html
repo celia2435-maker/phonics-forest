@@ -1351,7 +1351,7 @@ function buildWordObj(d){
   const w=(d.word||'').toLowerCase().trim();
   // Normalize phonicsGroup: trim whitespace
   const phonicsGroup=(d.phonicsGroup||'').trim();
-  let l=(d.letters||'').trim().toLowerCase().replace(/^-+/,''); // C欄去掉開頭的-
+  let l=(d.letters||'').trim().toLowerCase().replace(/^-+|-+$/g,''); // C欄去掉開頭和結尾的-（如 -ss, sc-, -st-）
   const idx=[];
   // Try letters field first
   if(l){
@@ -2551,7 +2551,7 @@ function startGame4(){
   document.getElementById('view-game4-active').style.display='';
 
   g4Render();
-  g4SetMsg('找出畫底線字母發音相同的牌來配對！');
+  g4SetMsg('選手牌，找桌面發音組相同的牌配對（看卡片底部標籤）');
 }
 
 function g4Render(){
@@ -2665,12 +2665,14 @@ const G4_SHAPES={
 function g4CardHTML(c,extraClass,onclick,sz){
   const sh=G4_SHAPES[c.level]||G4_SHAPES[1];
   const bsz=sz==='sm'?16:20;
+  const pgLabel=`<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:4;background:rgba(0,0,0,.45);color:#fff;font-size:7px;font-weight:900;padding:1px 5px;border-radius:6px;white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis;">${c.phonicsGroup}</div>`;
   return`<div class="g4c-wrap${extraClass?' '+extraClass:''}" style="background:${sh.bg};" onclick="${onclick}">
     <div class="g4c-badge">${sh.bsvg(c.level,bsz)}</div>
     ${sh.svg}
     <div class="g4c-content" style="width:${sh.cw};margin-top:${sh.mt};">
       <div class="g4c-word" id="g4cw_${c.id}">${g4HlWord(c)}</div>
     </div>
+    ${pgLabel}
     <div class="g4c-badge2">${sh.bsvg(c.level,bsz)}</div>
   </div>`;
 }
@@ -2718,10 +2720,10 @@ function g4ClickHand(i){
 
   if(g4SelectedCard&&g4SelectedCard.id===card.id){
     g4SelectedCard=null;
-    g4SetMsg('找出畫底線字母發音相同的牌來配對！');
+    g4SetMsg('選手牌，找桌面發音組相同的牌配對（看卡片底部標籤）');
   } else {
     g4SelectedCard=card;
-    g4SetMsg(`已選「${card.word}」，找桌面底線字母相同的牌配對`);
+    g4SetMsg(`已選「${card.word}」(${card.phonicsGroup})，找桌面相同發音組的牌`);
   }
   g4RenderHand();
   g4RenderPool();
@@ -2785,7 +2787,7 @@ function g4ToggleDiscard(){
   if(g4Turn!==0||g4Phase!=='play')return;
   g4DiscardMode=!g4DiscardMode;
   if(g4DiscardMode){g4SelectedCard=null;g4SetMsg('丟牌模式：點一張手牌丟到桌面，自動補入一張新牌');}
-  else g4SetMsg('找出畫底線字母發音相同的牌來配對！');
+  else g4SetMsg('選手牌，找桌面發音組相同的牌配對（看卡片底部標籤）');
   g4RenderHand();
   g4RenderPool();
 }
@@ -3130,12 +3132,14 @@ function g5MkWordCard(c,playable,i){
   const sh=G4_SHAPES[c.level]||G4_SHAPES[1];
   const id='g5w'+c.id;
   const border=playable?'border:2.5px solid rgba(255,255,255,.8);':'border:2.5px solid transparent;';
+  const g5pgLbl=`<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:4;background:rgba(0,0,0,.45);color:#fff;font-size:7px;font-weight:900;padding:1px 4px;border-radius:5px;white-space:nowrap;">${c.phonicsGroup}</div>`;
   return`<div class="g5c${playable?' playable':''}" style="background:${sh.bg};${border};overflow:hidden;position:relative;" onclick="g5PlayCard(${i})">
     <div style="position:absolute;top:2px;left:2px;z-index:3;">${sh.bsvg(c.level,14)}</div>
     ${sh.svg}
     <div style="position:relative;z-index:2;width:${sh.cw};margin-top:${sh.mt};display:flex;align-items:center;justify-content:center;">
       <div class="g5c-word" id="${id}">${g5HlWord(c)}</div>
     </div>
+    ${g5pgLbl}
     <div style="position:absolute;bottom:2px;right:2px;z-index:3;transform:rotate(180deg);">${sh.bsvg(c.level,14)}</div>
   </div>`;
 }
