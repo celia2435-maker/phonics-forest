@@ -2709,10 +2709,10 @@ function g4ClickHand(i){
     g4SelectedCard=null;
     g4DiscardMode=false;
     g4Phase='draw';
-    g4SetMsg('已丟牌，翻牌補手中...');
+    g4SetMsg('已丟牌，自動補牌中...');
     g4RenderHand();
     g4RenderPool();
-    setTimeout(()=>g4DrawToHand(),500);
+    setTimeout(()=>g4DrawToHand(),400);
     return;
   }
 
@@ -2752,33 +2752,39 @@ function g4ClickPool(i){
 }
 
 function g4DrawToHand(){
-  if(g4Stock.length===0){
+  // 補到5張
+  const added=[];
+  while(g4PlayerHand.length<5&&g4Stock.length>0){
+    const c=g4Stock.pop();
+    g4PlayerHand.push(c);
+    added.push(c.word);
+  }
+  if(!added.length&&g4Stock.length===0){
     g4Phase='done';
     g4SetMsg('牌堆已空，點結束回合');
-    g4RenderHand();g4RenderStock();
-    document.getElementById('g4EndTurnBtn').disabled=false;
-    return;
+  } else {
+    g4Phase='done';
+    g4SetMsg(`翻入手牌：${added.join('、')}，點結束回合`);
   }
-  const drawn=g4Stock.pop();
-  g4PlayerHand.push(drawn);
-  const cfg=LVC[drawn.level];
-  g4ShowMatchFlash(`🂠 翻入手牌\n${drawn.word} (L${drawn.level})`);
-  g4Phase='done';
   g4RenderHand();g4RenderStock();
-  g4SetMsg(`翻入手牌：${drawn.word}，點結束回合`);
   document.getElementById('g4EndTurnBtn').disabled=false;
 }
 
 function g4DrawFromStock(){
   if(g4Turn!==0||g4GameOver)return;
-  if(g4Phase!=='draw'){g4SetMsg('請先出牌或丟牌，再翻牌');return;}
+  if(g4Phase==='done'){g4SetMsg('請點「結束回合」換下一位');return;}
+  if(g4Phase==='play'){
+    // 無牌可出時可直接翻牌（等同丟牌後補牌）
+    g4DrawToHand();
+    return;
+  }
   g4DrawToHand();
 }
 
 function g4ToggleDiscard(){
   if(g4Turn!==0||g4Phase!=='play')return;
   g4DiscardMode=!g4DiscardMode;
-  if(g4DiscardMode){g4SelectedCard=null;g4SetMsg('點一張手牌丟到桌面，換掉一個桌牌位置');}
+  if(g4DiscardMode){g4SelectedCard=null;g4SetMsg('丟牌模式：點一張手牌丟到桌面，自動補入一張新牌');}
   else g4SetMsg('找出畫底線字母發音相同的牌來配對！');
   g4RenderHand();
   g4RenderPool();
@@ -2786,7 +2792,7 @@ function g4ToggleDiscard(){
 
 function g4EndPlayerTurn(){
   if(g4Turn!==0||g4GameOver)return;
-  if(g4Phase!=='done'){g4SetMsg('請先出牌，翻牌後再結束回合');return;}
+  if(g4Phase!=='done'){g4SetMsg('請先出牌或丟牌，補牌後再結束回合');return;}
   g4FinishPlayerTurn();
 }
 
@@ -2846,7 +2852,7 @@ function g4RunNpc(npcIdx){
     g4Pool.push(toss);
   }
 
-  if(g4Stock.length>0){
+  while(g4NpcHands[npcIdx].length<5&&g4Stock.length>0){
     g4NpcHands[npcIdx].push(g4Stock.pop());
   }
 
@@ -2862,7 +2868,8 @@ function g4RunNpc(npcIdx){
     g4SetMsg(`${g4NpcNames[next]} 思考中...`);
     g4NpcTimer=setTimeout(()=>g4RunNpc(next),800);
   } else {
-    g4Turn=0;g4RenderTurnInfo();
+    g4Turn=0;g4Phase='play';g4DiscardMode=false;g4SelectedCard=null;
+    g4RenderTurnInfo();
     g4RenderHand();
     g4SetMsg('輪到你了！選一張手牌出牌');
   }
