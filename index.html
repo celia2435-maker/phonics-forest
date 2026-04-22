@@ -564,7 +564,6 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
 .g5c{width:68px;height:90px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:3px;border:2.5px solid transparent;user-select:none;}
 .g5c:hover{transform:translateY(-5px);box-shadow:0 8px 18px rgba(0,0,0,.2);}
 .g5c:active{transform:scale(.93);}
-.g5c.playable{border-color:rgba(255,255,255,.7);}
 .g5c.playable:hover{transform:translateY(-8px);}
 .g5c.action-card{border-style:dashed;}
 .g5c-pts{position:absolute;top:2px;right:2px;font-size:6.5px;font-weight:900;color:#fff;background:rgba(0,0,0,.38);border-radius:3px;padding:0 2px;line-height:1.5;}
@@ -900,6 +899,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
         <div class="cd-inner">
           <div>
             <div class="cd-pg" id="cdPg"></div>
+            <div class="cd-lt" id="cdLt" style="font-size:13px;margin-bottom:2px;"></div>
             <div class="cd-word" id="cdWord"></div>
           </div>
           <button class="cd-speak" onclick="speakSelected()">🔊 播放</button>
@@ -1389,7 +1389,7 @@ function buildWordObj(d){
       if(w[i]===v&&w[i+2]===e){idx.push(i);idx.push(i+2);break;}
     }
     if(!idx.length&&w.length>0)idx.push(0);
-    return{...d,word:w,phonicsGroup,letters:'1',displayParts:null,indices:idx};
+    return{...d,word:w,phonicsGroup,letters:'1',rawLetters:rawL,displayParts:null,indices:idx};
   }
 
   // ── 括號格式：(w)a, a(lt), (qu)a ──
@@ -1402,7 +1402,7 @@ function buildWordObj(d){
       while(i!==-1){idx.push(i);i=w.indexOf(underlinePart,i+1);}
     }
     if(!idx.length&&w.length>0)idx.push(0);
-    return{...d,word:w,phonicsGroup,letters:underlinePart||rawL,displayParts,indices:idx};
+    return{...d,word:w,phonicsGroup,letters:underlinePart||rawL,rawLetters:rawL,displayParts,indices:idx};
   }
 
   // ── 一般格式：去掉 dash ──
@@ -1421,7 +1421,7 @@ function buildWordObj(d){
     }
   }
   if(!idx.length&&w.length>0){idx.push(0);if(!l)l=w;}
-  return{...d,word:w,phonicsGroup,letters:l,displayParts:null,indices:idx};
+  return{...d,word:w,phonicsGroup,letters:l,rawLetters:rawL,displayParts:null,indices:idx};
 }
 
 let allWords=[];
@@ -1432,33 +1432,73 @@ let filteredWords=[...allWords];
 /* ═══════════════════════════════════════
    HELPERS
 ═══════════════════════════════════════ */
+function renderLettersDisplay(w,cfg){
+  // 顯示字母組成，如 (qu)a, a(lt), ss, a-e 等
+  const rawL=(w.rawLetters||w.letters||'').trim();
+  const c=cfg.c; // 主色（橘/綠/紫等）
+  const gray='color:rgba(100,80,60,.45);font-size:.9em;';
+
+  // Magic-e：a-e 格式
+  if(/^[aeiou]-[aeiou]$/.test(rawL)){
+    const [v,,e]=rawL;
+    return`<span style="color:${c};font-weight:900;">${v}</span><span style="${gray}">_</span><span style="color:${c};font-weight:900;">${e}</span>`;
+  }
+
+  // 括號格式：(w)a, a(lt), (qu)a
+  if(rawL.includes('(')){
+    let parts=[],j=0;
+    const r=rawL.replace(/^-+|-+$/g,'');
+    // re-parse with dashes
+    let rr=rawL;
+    while(j<rr.length){
+      if(rr[j]==='('){
+        const end=rr.indexOf(')',j);
+        if(end>0){parts.push({text:rr.slice(j+1,end),bracket:true});j=end+1;}
+        else j++;
+      } else if(rr[j]==='-'){j++;}
+      else{
+        let k=j;while(k<rr.length&&rr[k]!=='('&&rr[k]!==')'&&rr[k]!=='-')k++;
+        if(k>j)parts.push({text:rr.slice(j,k),bracket:false});
+        j=k;
+      }
+    }
+    return parts.map(p=>
+      p.bracket
+        ? `<span style="${gray}">(${p.text})</span>`
+        : `<span style="color:${c};font-weight:900;">${p.text}</span>`
+    ).join('');
+  }
+
+  // 一般格式：去掉 dash 後直接顯示
+  const clean=rawL.replace(/^-+|-+$/g,'');
+  return`<span style="color:${c};font-weight:900;">${clean}</span>`;
+}
+
 function hlWord(word,letters,level,indices,displayParts){
   const c=LVC[level]?.c||'#333';
   if(!indices||!indices.length)return`<span>${word}</span>`;
   const chLen=letters==='1'?1:letters.length;
-  // 括號格式：計算括號字母的長度以正確跳過原字中對應字母
-  let bracketBefore='',bracketAfter='',skipBefore=0,skipAfter=0;
+  // 括號格式：計算需要跳過的字母數（括號字母在原字中仍存在）
+  let skipBefore=0,skipAfter=0;
   if(displayParts){
     const fn=displayParts.findIndex(p=>!p.bracket);
     displayParts.forEach((p,i)=>{
       if(p.bracket){
-        const span=`<span style="color:rgba(58,46,32,.38);font-size:.88em;">(${p.text})</span>`;
-        if(i<fn){bracketBefore+=span;skipBefore+=p.text.length;}
-        else{bracketAfter+=span;skipAfter+=p.text.length;}
+        if(i<fn)skipBefore+=p.text.length;
+        else skipAfter+=p.text.length;
       }
     });
   }
+  // 單字顯示：只畫底線，不加括號文字
   let out='',pos=0,first=true;
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<pos)continue;
-    // 括號前字母出現在底線字母前面的位置
     const actualStart=s-skipBefore;
     out+=word.slice(pos,actualStart);
-    const hlText=word.slice(s,s+chLen);
-    const hlSpan=`<span class="hl" style="color:${c};text-decoration-color:${c};">${hlText}</span>`;
-    out+=first&&displayParts?bracketBefore+hlSpan+bracketAfter:hlSpan;
+    const hlSpan=`<span class="hl" style="color:${c};text-decoration-color:${c};">${word.slice(s,s+chLen)}</span>`;
+    out+=hlSpan;
     first=false;
-    pos=s+chLen+skipAfter; // 跳過後方括號對應的字母
+    pos=s+chLen+skipAfter;
   }
   out+=word.slice(pos);
   return out;
@@ -1553,7 +1593,7 @@ function renderCards(){
     return`<div class="phcard" id="phc${i}" onclick="phcardClick(${i},'${w.word}',${w.level})" style="background:${cfg.l}22;border-color:${cfg.l};">
       <div class="clv-badge" style="background:${cfg.c};">L${w.level}</div>
       <div class="c-pg" style="color:${cfg.c};">${w.phonicsGroup}</div>
-      <div class="c-lt" style="color:${cfg.d};">${w.letters}</div>
+      <div class="c-lt">${renderLettersDisplay(w,cfg)}</div>
       <div class="c-word">${hlWord(w.word,w.letters,w.level,w.indices,w.displayParts)}</div>
       <div class="c-snd" style="background:${cfg.l};color:${cfg.c};">🔊</div>
     </div>`;
@@ -1897,6 +1937,8 @@ function updateCardDetail(i){
   const cfg=LVC[c.level];
   document.getElementById('cdPg').textContent=c.phonicsGroup;
   document.getElementById('cdPg').style.color=cfg.c;
+  const cdLtEl=document.getElementById('cdLt');
+  if(cdLtEl)cdLtEl.innerHTML=renderLettersDisplay(c,cfg);
   document.getElementById('cdWord').innerHTML=hlWord(c.word,c.letters,c.level,c.indices,c.displayParts);
   document.getElementById('cardDetail').style.display='';
 }
@@ -2696,24 +2738,21 @@ function g4HlWord(c){
   const{word,letters,indices,displayParts}=c;
   if(!indices||!indices.length)return`<span style="color:#3A2E20;">${word}</span>`;
   const chLen=letters==='1'?1:letters.length;
-  let bb='',ba='',skipB=0,skipA=0;
+  // 只計算跳過量，不在單字內顯示括號
+  let skipB=0,skipA=0;
   if(displayParts){
     const fn=displayParts.findIndex(p=>!p.bracket);
     displayParts.forEach((p,i)=>{
-      if(p.bracket){
-        const sp=`<span style="color:rgba(58,46,32,.38);font-size:.88em;">(${p.text})</span>`;
-        if(i<fn){bb+=sp;skipB+=p.text.length;}else{ba+=sp;skipA+=p.text.length;}
-      }
+      if(p.bracket){if(i<fn)skipB+=p.text.length;else skipA+=p.text.length;}
     });
   }
-  let o='',p=0,first=true;
+  let o='',p=0;
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<p)continue;
     const as=s-skipB;
     if(as>p)o+=`<span style="color:#3A2E20;">${word.slice(p,as)}</span>`;
-    const hl=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+chLen)}</span>`;
-    o+=first&&displayParts?bb+hl+ba:hl;
-    first=false;p=s+chLen+skipA;
+    o+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+chLen)}</span>`;
+    p=s+chLen+skipA;
   }
   if(p<word.length)o+=`<span style="color:#3A2E20;">${word.slice(p)}</span>`;
   return o;
@@ -3118,6 +3157,10 @@ function startGame5(){
 }
 
 function g5Render(){
+  // 若玩家回合但 phase 不正確，強制修正
+  if(g5Turn===0&&!g5GameOver&&g5Phase!=='play'&&g5Phase!=='draw'&&g5Phase!=='done'){
+    g5Phase='play';
+  }
   g5RenderNpc();
   g5RenderTop();
   g5RenderDeck();
@@ -3179,28 +3222,40 @@ function g5UpdateTarget(){
 
 function g5HlWord(c){
   const col=LVC[c.level]?.c||'#333';
-  const{word,letters,indices}=c;
+  const{word,letters,indices,displayParts}=c;
   if(!indices||!indices.length)return`<span style="color:#3A2E20;">${word}</span>`;
-  let o='',p=0;
-  for(const s of[...indices].sort((a,b)=>a-b)){
-    if(s<p)continue;
-    if(s>p)o+=`<span style="color:#3A2E20;">${word.slice(p,s)}</span>`;
-    o+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+(letters==="1"?1:letters.length))}</span>`;
-    p=s+(letters==="1"?1:letters.length);
+  const chLen=letters==='1'?1:letters.length;
+  let skipB=0,skipA=0;
+  if(displayParts){
+    const fn=displayParts.findIndex(p=>!p.bracket);
+    displayParts.forEach((p,i)=>{
+      if(p.bracket){if(i<fn)skipB+=p.text.length;else skipA+=p.text.length;}
+    });
   }
-  if(p<word.length)o+=`<span style="color:#3A2E20;">${word.slice(p)}</span>`;
-  return o;
+  let out='',pos=0;
+  for(const s of[...indices].sort((a,b)=>a-b)){
+    if(s<pos)continue;
+    const as=s-skipB;
+    if(as>pos)out+=`<span style="color:#3A2E20;">${word.slice(pos,as)}</span>`;
+    out+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+chLen)}</span>`;
+    pos=s+chLen+skipA;
+  }
+  if(pos<word.length)out+=`<span style="color:#3A2E20;">${word.slice(pos)}</span>`;
+  return out;
 }
 
 function g5CanPlay(card){
-  // joker: always playable (replaces any word card, no effect on pg/lv)
+  // joker: always playable
   if(card.action==='joker')return true;
   // if draw pending, only +2/+4 can counter
   if(g5DrawPending>0)return card.action==='+2'||card.action==='+4';
   // wild: always playable
   if(card.action==='wild')return true;
-  // normal & other actions: match pg or level
-  return card.phonicsGroup===g5CurrentPg||card.level===g5CurrentLv;
+  // 相同發音組 → 可出（無論 Level）
+  if(card.phonicsGroup===g5CurrentPg)return true;
+  // 相同 Level → 可出（出牌後目標發音組改為此牌的發音組）
+  if(card.level===g5CurrentLv)return true;
+  return false;
 }
 
 function g5ActionCardImg(action){
@@ -3211,7 +3266,7 @@ function g5ActionCardImg(action){
 function g5MkWordCard(c,playable,i){
   const sh=G4_SHAPES[c.level]||G4_SHAPES[1];
   const id='g5w'+c.id;
-  const border=playable?'border:2.5px solid rgba(255,255,255,.8);':'border:2.5px solid transparent;';
+  const border='border:2.5px solid transparent;'; // 不顯示可出牌提示
   const g5pgLbl=`<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:4;background:rgba(0,0,0,.45);color:#fff;font-size:7px;font-weight:900;padding:1px 4px;border-radius:5px;white-space:nowrap;">${c.phonicsGroup}</div>`;
   return`<div class="g5c${playable?' playable':''}" style="background:${sh.bg};${border};overflow:hidden;position:relative;" onclick="g5PlayCard(${i})">
     <div style="position:absolute;top:2px;left:2px;z-index:3;">${sh.bsvg(c.level,14)}</div>
@@ -3235,7 +3290,7 @@ function g5RenderHand(){
       const img=g5ActionCardImg(c.action);
       if(img){
         return`<div class="g5c${playable?' playable':''}"
-          style="background:#000;border-color:${playable?'rgba(255,255,255,.8)':'transparent'};padding:0;overflow:hidden;"
+          style="background:#000;padding:0;overflow:hidden;"
           onclick="g5PlayCard(${i})">
           <img src="${img}" style="width:100%;height:100%;object-fit:cover;display:block;" draggable="false"/>
         </div>`;
@@ -3244,7 +3299,7 @@ function g5RenderHand(){
       const lbls={reverse:'迴轉',skip:'跳過','+2':'+2','+4':'+4',wild:'換色',joker:'小丑'};
       const bg=c.action==='joker'?'#555':cfg.c;
       return`<div class="g5c action-card${playable?' playable':''}"
-        style="background:${bg};border-color:${playable?'rgba(255,255,255,.8)':bg};"
+        style="background:${bg};"
         onclick="g5PlayCard(${i})">
         <div class="g5c-pts">L${c.level}</div>
         <div class="g5c-action">${icons[c.action]||c.action}</div>
@@ -3254,14 +3309,13 @@ function g5RenderHand(){
     // Use same card shape system as game4
     return g5MkWordCard(c,playable,i);
   }).join('');
-  const drawBtn=document.getElementById('g5DrawBtn');
-  const hasPlayable=hand.some(c=>g5CanPlay(c));
-  const canDraw=isMyTurn&&(g5Phase==='draw'||g5DrawPending>0||(g5Phase==='play'&&!hasPlayable));
-  drawBtn.disabled=!canDraw;
-  drawBtn.className='g5-draw-btn'+(g5DrawPending>0?' highlight':'');
-  drawBtn.textContent=g5DrawPending>0?`🂠 必須抽 ${g5DrawPending} 張！`:'🂠 從牌堆抽一張';
-  const endBtn=document.getElementById('g5EndBtn');
-  if(endBtn){endBtn.disabled=!isMyTurn||g5Phase!=='done';}
+  // 按鈕狀態由 g5UpdateSteps 統一管理，這裡只處理非玩家回合
+  if(!isMyTurn){
+    const drawBtn=document.getElementById('g5DrawBtn');
+    const endBtn=document.getElementById('g5EndBtn');
+    if(drawBtn)drawBtn.disabled=true;
+    if(endBtn)endBtn.disabled=true;
+  }
 }
 
 function g5UpdateSteps(){
@@ -3285,6 +3339,22 @@ function g5UpdateSteps(){
     if(ptxt)ptxt.textContent='點牌堆抽一張牌';
   } else {
     if(ptxt)ptxt.textContent='點「結束回合」換下一位';
+  }
+  // 同步按鈕狀態
+  const drawBtn=document.getElementById('g5DrawBtn');
+  const endBtn=document.getElementById('g5EndBtn');
+  const unoBtn=document.getElementById('g5UnoBtn');
+  if(drawBtn){
+    const hasPlayable=g5Hands[0].some(c=>g5CanPlay(c));
+    const canDraw=g5Phase==='draw'||g5DrawPending>0||(g5Phase==='play'&&!hasPlayable);
+    drawBtn.disabled=!canDraw;
+    drawBtn.className='g5-draw-btn'+(g5DrawPending>0?' highlight':'');
+    drawBtn.textContent=g5DrawPending>0?`🂠 必須抽 ${g5DrawPending} 張！`:'🂠 從牌堆抽一張';
+  }
+  if(endBtn)endBtn.disabled=g5Phase!=='done';
+  if(unoBtn&&g5Phase==='play'&&!unoBtn.disabled&&g5Hands[0].length!==1){
+    // 重置 UNO 按鈕（新回合）
+    unoBtn.style.background='#FF4444';unoBtn.textContent='🗣️ UNO!';unoBtn.disabled=false;
   }
 }
 
@@ -3463,8 +3533,8 @@ function g5DrawCard(){
   if(g5Phase!=='draw'&&g5Phase!=='play')return;
   const drawn=g5PopDeck();
   g5Hands[0].push(drawn);
-  g5SetMsg(`抽到：${drawn.word||drawn.action}`);
-  g5Phase='done';
+  g5SetMsg(`抽到：${drawn.word||drawn.action||'牌'} — 點結束回合`);
+  g5Phase='done'; // 抽牌後必須結束回合（不能再出牌）
   g5Render();g5UpdateSteps();
 }
 
@@ -3549,7 +3619,10 @@ function g5NpcDrawAndEnd(ni){
   g5Phase='play';
   g5Render();g5UpdateSteps();
   if(g5Turn!==0&&!g5GameOver)setTimeout(()=>g5NpcTurn(),700);
-  else if(g5Turn===0&&!g5GameOver){g5Render();g5UpdateSteps();}
+  else if(g5Turn===0&&!g5GameOver){
+    g5Phase='play'; // 確保玩家回合 phase 正確
+    g5Render();g5UpdateSteps();
+  }
 }
 
 function g5EndGame(winnerIdx){
