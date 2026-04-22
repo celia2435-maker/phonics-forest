@@ -456,7 +456,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
   grid-row:1/3;grid-column:2;
   display:flex;align-items:center;justify-content:center;
 }
-.g4-empty-slot{width:54px;height:72px;border-radius:8px;border:2px dashed rgba(255,255,255,.15);}
+.g4-empty-slot{width:64px;height:84px;border-radius:8px;border:2px dashed rgba(255,255,255,.15);}
 
 .g4-stock{width:56px;height:76px;background:#1a4a1f;border:2px solid rgba(255,255,255,.2);border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
 .g4-stock:hover{background:#245a2a;border-color:rgba(255,255,255,.4);}
@@ -481,7 +481,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
   box-shadow:0 2px 6px rgba(0,0,0,.18);padding:3px;user-select:none;
 }
 .g4-card:hover{transform:scale(1.06);}
-.g4-card.pool-card{width:54px;height:72px;}
+.g4-card.pool-card{width:64px;height:84px;}
 .g4-card.pool-card.match-ready{
   border:2.5px solid #FFD700;
   box-shadow:0 0 0 2px rgba(255,215,0,.25),0 2px 8px rgba(0,0,0,.2);
@@ -561,14 +561,14 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
 .g5-hand-lbl{font-size:9px;font-weight:800;color:var(--bark2);text-transform:uppercase;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
 .g5-hand-cnt{font-size:10px;font-weight:900;color:var(--lf);}
 .g5-hand{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;margin-bottom:6px;}
-.g5c{width:54px;height:74px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:3px;border:2.5px solid transparent;user-select:none;}
+.g5c{width:68px;height:90px;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.15);padding:3px;border:2.5px solid transparent;user-select:none;}
 .g5c:hover{transform:translateY(-5px);box-shadow:0 8px 18px rgba(0,0,0,.2);}
 .g5c:active{transform:scale(.93);}
 .g5c.playable{border-color:rgba(255,255,255,.7);}
 .g5c.playable:hover{transform:translateY(-8px);}
 .g5c.action-card{border-style:dashed;}
 .g5c-pts{position:absolute;top:2px;right:2px;font-size:6.5px;font-weight:900;color:#fff;background:rgba(0,0,0,.38);border-radius:3px;padding:0 2px;line-height:1.5;}
-.g5c-word{font-size:8.5px;font-weight:900;text-align:center;line-height:1.15;padding:0 2px;word-break:break-all;color:#3A2E20;}
+.g5c-word{font-size:10px;font-weight:900;text-align:center;line-height:1.15;padding:0 2px;white-space:nowrap;color:#3A2E20;}
 .g5c-word .hl{text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;}
 .g5c-action{font-size:18px;margin-bottom:1px;}
 .g5c-action-txt{font-size:8px;font-weight:900;color:#fff;}
@@ -833,7 +833,7 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
     <div class="hdr-row">
       <div>
         <div class="hdr-title" id="hdrTitle">🦉 <span>Phonics</span> Forest</div>
-        <div class="hdr-sub" id="hdrSub">自然發音練習 App · Phase 1+2</div>
+        <div class="hdr-sub" id="hdrSub">自然發音練習 App · Phase 1–5</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
         <button class="back-btn" id="backBtn" onclick="goSetup()" style="display:none;">🏠 主選單</button>
@@ -1348,7 +1348,7 @@ function buildWordObj(d){
   const w=(d.word||'').toLowerCase().trim();
   // Normalize phonicsGroup: trim whitespace
   const phonicsGroup=(d.phonicsGroup||'').trim();
-  let l=(d.letters||'').trim().toLowerCase();
+  let l=(d.letters||'').trim().toLowerCase().replace(/^-+/,''); // C欄去掉開頭的-
   const idx=[];
   // Try letters field first
   if(l){
@@ -1645,18 +1645,19 @@ function buildSetupUI(){
   const cands=getGameCandidates();
   const groups=[...new Set(cands.map(w=>w.phonicsGroup))];
   const pc=document.getElementById('setupPgChips');
-  const allSel=gamePgs.size===0;
-  pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="clearGPg()" title="全部發音組">全部</div>`
-    +groups.map(g=>{
-      const on=gamePgs.has(g);
-      const lv=allWords.find(w=>w.phonicsGroup===g)?.level||1;
-      const cfg=LVC[lv];
-      return`<div class="pg-c${on?' on':''}" style="${on?`background:${cfg.c};color:#fff;border-color:${cfg.c};`:''}" onclick="toggleGPg('${g}')" title="${g}">${g}</div>`;
-    }).join('');
+  if(pc){
+    const cands2=getGameCandidates();
+    const grps=[...new Set(cands2.map(w=>w.phonicsGroup))];
+    pc.innerHTML=grps.map(g=>{
+      const lv=(filteredWords.length?filteredWords:allWords).find(w=>w.phonicsGroup===g)?.level||1;
+      return`<div class="pg-c on" style="background:${LVC[lv]?.c||'#888'};color:#fff;">${g}</div>`;
+    }).join('')||'<span style="font-size:11px;color:var(--bark2);">（請先到篩選頁設定）</span>';
+  }
   updateDeckPreview();
 }
 function getGameCandidates(){
-  return allWords.filter(w=>gameLevels.has(w.level)&&(gamePgs.size===0||gamePgs.has(w.phonicsGroup)));
+  const base=filteredWords.length?filteredWords:allWords;
+  return base.filter(w=>gameLevels.has(w.level));
 }
 function toggleGLv(lv){
   if(gameLevels.has(lv)){if(gameLevels.size>1)gameLevels.delete(lv);}else gameLevels.add(lv);
@@ -1941,7 +1942,8 @@ let g2CurrentWord=null,g2Answered=false;
 let g2SpeakTimer=null;
 
 function g2GetCandidates(){
-  return allWords.filter(w=>g2Levels.has(w.level)&&(g2Pgs.size===0||g2Pgs.has(w.phonicsGroup)));
+  const base=filteredWords.length?filteredWords:allWords;
+  return base.filter(w=>g2Levels.has(w.level));
 }
 function g2BuildSetupUI(){
   const lc=document.getElementById('g2SetupLvChips');
@@ -1952,14 +1954,10 @@ function g2BuildSetupUI(){
   const cands=g2GetCandidates();
   const groups=[...new Set(cands.map(w=>w.phonicsGroup))];
   const pc=document.getElementById('g2SetupPgChips');
-  const allSel=g2Pgs.size===0;
-  pc.innerHTML=`<div class="pg-c${allSel?' on':''}" style="${allSel?'background:#4A8050;color:#fff;':''}" onclick="g2ClearPgs()">全部</div>`
-    +groups.map(g=>{
-      const on=g2Pgs.has(g);
-      const lv=allWords.find(w=>w.phonicsGroup===g)?.level||1;
-      const cfg=LVC[lv];
-      return`<div class="pg-c${on?' on':''}" style="${on?`background:${cfg.c};`:''}" onclick="g2TogglePg('${g}')">${g}</div>`;
-    }).join('');
+  pc.innerHTML=groups.map(g=>{
+    const lv=(filteredWords.length?filteredWords:allWords).find(w=>w.phonicsGroup===g)?.level||1;
+    return`<div class="pg-c on" style="background:${LVC[lv]?.c||'#888'};color:#fff;">${g}</div>`;
+  }).join('')||'<span style="font-size:11px;color:var(--bark2);">（請先到篩選頁設定）</span>';
   g2UpdatePreview();
 }
 function g2ToggleLv(lv){
@@ -2261,7 +2259,7 @@ function g3RefreshModeUI(){
 function startGame3(){
   activeGame='game3';
   document.getElementById('backBtn').style.display='';
-  const cands=allWords.filter(w=>g3Levels3.has(w.level));
+  const cands=(filteredWords.length?filteredWords:allWords).filter(w=>g3Levels3.has(w.level));
   if(cands.length<4){alert('請選擇更多等級以獲得足夠單字！');return;}
 
   const groups=[...new Set(cands.map(w=>w.phonicsGroup))];
@@ -2504,7 +2502,7 @@ function g4MakeCard(wordObj){
 }
 
 function g4BuildDeck(){
-  const cands=allWords.filter(w=>g4Lvs.has(w.level));
+  const cands=(filteredWords.length?filteredWords:allWords).filter(w=>g4Lvs.has(w.level));
   if(!cands.length)return[];
   const deck=[];
   while(deck.length<100){
@@ -2593,7 +2591,7 @@ function g4RenderHand(){
   const hand=document.getElementById('g4Hand');
   hand.innerHTML=g4PlayerHand.map((c,i)=>{
     const isSel=g4SelectedCard&&g4SelectedCard.id===c.id;
-    return`<div style="width:58px;height:78px;flex-shrink:0;">
+    return`<div style="width:68px;height:90px;flex-shrink:0;">
       ${g4CardHTML(c,isSel?'g4sel':'',`g4ClickHand(${i})`,'sm')}
     </div>`;
   }).join('');
@@ -2938,7 +2936,7 @@ function g5MakeCard(w,actionType){
 }
 
 function g5BuildDeck(){
-  const cands=allWords.filter(w=>g5Lvs.has(w.level));
+  const cands=(filteredWords.length?filteredWords:allWords).filter(w=>g5Lvs.has(w.level));
   if(!cands.length){
     alert('請先到「📥 匯入」頁面載入單字資料！');
     return[];
@@ -3148,7 +3146,8 @@ function g5RenderHand(){
     return g5MkWordCard(c,playable,i);
   }).join('');
   const drawBtn=document.getElementById('g5DrawBtn');
-  const canDraw=isMyTurn&&(g5Phase==='draw'||g5DrawPending>0);
+  const hasPlayable=hand.some(c=>g5CanPlay(c));
+  const canDraw=isMyTurn&&(g5Phase==='draw'||g5DrawPending>0||(g5Phase==='play'&&!hasPlayable));
   drawBtn.disabled=!canDraw;
   drawBtn.className='g5-draw-btn'+(g5DrawPending>0?' highlight':'');
   drawBtn.textContent=g5DrawPending>0?`🂠 必須抽 ${g5DrawPending} 張！`:'🂠 從牌堆抽一張';
@@ -3352,7 +3351,7 @@ function g5DrawCard(){
     g5Render();g5UpdateSteps();
     return;
   }
-  if(g5Phase!=='draw')return;
+  if(g5Phase!=='draw'&&g5Phase!=='play')return;
   const drawn=g5PopDeck();
   g5Hands[0].push(drawn);
   g5SetMsg(`抽到：${drawn.word||drawn.action}`);
