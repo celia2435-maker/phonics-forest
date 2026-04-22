@@ -1103,6 +1103,9 @@ body{font-family:-apple-system,'SF Pro Text','SF Pro Display','Helvetica Neue',A
         <div class="dp-title">📖 每回合三步</div>
         <div class="dp-body">1️⃣ <b>出牌配對</b>：選手牌，找桌面<b>畫底線字母發音相同</b>的牌得分<br>↳ 無法配對？開「丟牌模式」把一張手牌放到桌面<br>2️⃣ <b>自動翻牌補手</b>：出牌或丟牌後，牌堆翻一張<b>直接加入手牌</b><br>3️⃣ <b>結束回合</b>：點「結束回合」換下一位</div>
       </div>
+      <div style="background:var(--lfl);border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:var(--lfd);font-weight:700;line-height:1.6;">
+        💡 <b>牌堆說明：</b>從「篩選器」選定的單字中隨機抽 100 張組成牌堆。每位玩家發 5 張手牌，桌面放 4 張，剩餘為牌堆。
+      </div>
       <button class="start-btn" onclick="startGame4()">♠♥♦ 開始撿紅點</button>
     </div>
 
@@ -2502,10 +2505,14 @@ function g4MakeCard(wordObj){
 }
 
 function g4BuildDeck(){
-  const cands=(filteredWords.length?filteredWords:allWords).filter(w=>g4Lvs.has(w.level));
+  // 使用篩選器篩選後的單字；若未設篩選則使用全部
+  const base=filteredWords.length?filteredWords:allWords;
+  const cands=base.filter(w=>g4Lvs.has(w.level));
   if(!cands.length)return[];
+  // 牌堆 = 每張單字至少出現2次（方便配對），固定100張
   const deck=[];
-  while(deck.length<100){
+  const deckTarget=100;
+  while(deck.length<deckTarget){
     const w=cands[Math.floor(Math.random()*cands.length)];
     deck.push(g4MakeCard(w));
   }
@@ -2698,6 +2705,7 @@ function g4ClickHand(i){
     g4PlayerHand.splice(i,1);
     g4Pool.push(card);
     while(g4Pool.length>4)g4Pool.shift();
+    while(g4Pool.length<4&&g4Stock.length>0)g4Pool.push(g4Stock.pop());
     g4SelectedCard=null;
     g4DiscardMode=false;
     g4Phase='draw';
@@ -2784,11 +2792,20 @@ function g4EndPlayerTurn(){
 
 function g4FinishPlayerTurn(){
   g4Phase='play';g4DiscardMode=false;g4SelectedCard=null;
+  // 補滿桌面到4張
+  while(g4Pool.length<4&&g4Stock.length>0)g4Pool.push(g4Stock.pop());
   g4RenderHand();g4RenderPool();g4RenderStock();
   if(g4CheckGameOver()){g4EndGame();return;}
+  if(g4NpcCount===0){
+    // 無NPC，直接回玩家回合
+    g4Turn=0;g4RenderTurnInfo();
+    g4SetMsg('輪到你了！選一張手牌出牌');
+    return;
+  }
   g4Turn=1;
   g4RenderTurnInfo();
   g4SetMsg(`${g4NpcNames[0]} 思考中...`);
+  clearInterval(g4NpcTimer);
   g4NpcTimer=setTimeout(()=>g4RunNpc(0),900);
 }
 
@@ -2833,6 +2850,8 @@ function g4RunNpc(npcIdx){
     g4NpcHands[npcIdx].push(g4Stock.pop());
   }
 
+  // 補滿桌面到4張
+  while(g4Pool.length<4&&g4Stock.length>0)g4Pool.push(g4Stock.pop());
   g4RenderNpc();g4RenderPool();g4RenderStock();
 
   if(g4CheckGameOver()){g4EndGame();return;}
@@ -2850,9 +2869,8 @@ function g4RunNpc(npcIdx){
 }
 
 function g4CheckGameOver(){
+  // 遊戲結束條件：牌堆抽完
   if(g4Stock.length>0)return false;
-  if(g4PlayerHand.length>0)return false;
-  for(const h of g4NpcHands) if(h.length>0)return false;
   return true;
 }
 
