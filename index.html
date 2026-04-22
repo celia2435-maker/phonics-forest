@@ -1347,32 +1347,81 @@ const DEMO_RAW=[
   {level:5,phonicsGroup:'/juː/',letters:'ew',word:'blew'},
 ];
 
+function parseBracketLetters(rawL){
+  // 解析 C欄括號格式，如 (w)a, a(lt), (qu)a
+  // 回傳 {displayParts, underlinePart}
+  // displayParts = [{text, bracket}]，underlinePart = 只要畫底線的字母
+  const parts=[];
+  let i=0;
+  const s=rawL.trim().toLowerCase().replace(/^-+|-+$/g,''); // 去掉外層 dash
+  // 但先保留括號再處理 dash
+  const raw=rawL.trim().toLowerCase();
+  let j=0;
+  while(j<raw.length){
+    if(raw[j]==='('){
+      const end=raw.indexOf(')',j);
+      if(end>0){parts.push({text:raw.slice(j+1,end),bracket:true});j=end+1;}
+      else{j++;}
+    } else if(raw[j]==='-'){
+      j++; // skip dashes
+    } else {
+      let k=j;
+      while(k<raw.length&&raw[k]!=='('&&raw[k]!==')'&&raw[k]!=='-')k++;
+      if(k>j)parts.push({text:raw.slice(j,k),bracket:false});
+      j=k;
+    }
+  }
+  const underlinePart=parts.filter(p=>!p.bracket).map(p=>p.text).join('');
+  return{displayParts:parts,underlinePart};
+}
+
 function buildWordObj(d){
   const w=(d.word||'').toLowerCase().trim();
-  // Normalize phonicsGroup: trim whitespace
   const phonicsGroup=(d.phonicsGroup||'').trim();
-  let l=(d.letters||'').trim().toLowerCase().replace(/^-+|-+$/g,''); // C欄去掉開頭和結尾的-（如 -ss, sc-, -st-）
+  const rawL=(d.letters||'').trim().toLowerCase();
+
+  // ── Magic-e：a-e, e-e, i-e, o-e, u-e ──
+  const magicE=/^([aeiou])-([aeiou])$/.exec(rawL);
+  if(magicE){
+    const v=magicE[1],e=magicE[2];
+    const idx=[];
+    for(let i=0;i<w.length-2;i++){
+      if(w[i]===v&&w[i+2]===e){idx.push(i);idx.push(i+2);break;}
+    }
+    if(!idx.length&&w.length>0)idx.push(0);
+    return{...d,word:w,phonicsGroup,letters:'1',displayParts:null,indices:idx};
+  }
+
+  // ── 括號格式：(w)a, a(lt), (qu)a ──
+  const hasBracket=rawL.includes('(');
+  if(hasBracket){
+    const{displayParts,underlinePart}=parseBracketLetters(rawL);
+    const idx=[];
+    if(underlinePart){
+      let i=w.indexOf(underlinePart);
+      while(i!==-1){idx.push(i);i=w.indexOf(underlinePart,i+1);}
+    }
+    if(!idx.length&&w.length>0)idx.push(0);
+    return{...d,word:w,phonicsGroup,letters:underlinePart||rawL,displayParts,indices:idx};
+  }
+
+  // ── 一般格式：去掉 dash ──
+  let l=rawL.replace(/^-+|-+$/g,'');
   const idx=[];
-  // Try letters field first
   if(l){
     let i=w.indexOf(l);
     while(i!==-1){idx.push(i);i=w.indexOf(l,i+1);}
   }
-  // If no match, try phonicsGroup as literal letters (strip slashes)
   if(!idx.length&&phonicsGroup){
-    const pg=phonicsGroup.replace(/[/\\]/g,'').toLowerCase().trim();
-    if(pg&&pg.length>=1&&pg.length<=5&&pg!==l){
+    const pg=phonicsGroup.replace(/[/\\-]/g,'').toLowerCase().trim();
+    if(pg&&pg.length>=1&&pg.length<=6&&pg!==l){
       let i=w.indexOf(pg);
       while(i!==-1){idx.push(i);i=w.indexOf(pg,i+1);}
       if(idx.length)l=pg;
     }
   }
-  // Still no match: underline whole word so user sees something
-  if(!idx.length&&w.length>0){
-    idx.push(0);
-    if(!l)l=w;
-  }
-  return{...d,word:w,phonicsGroup,letters:l,indices:idx};
+  if(!idx.length&&w.length>0){idx.push(0);if(!l)l=w;}
+  return{...d,word:w,phonicsGroup,letters:l,displayParts:null,indices:idx};
 }
 
 let allWords=[];
@@ -1383,15 +1432,33 @@ let filteredWords=[...allWords];
 /* ═══════════════════════════════════════
    HELPERS
 ═══════════════════════════════════════ */
-function hlWord(word,letters,level,indices){
+function hlWord(word,letters,level,indices,displayParts){
   const c=LVC[level]?.c||'#333';
   if(!indices||!indices.length)return`<span>${word}</span>`;
-  let out='',pos=0;
+  const chLen=letters==='1'?1:letters.length;
+  // 括號格式：計算括號字母的長度以正確跳過原字中對應字母
+  let bracketBefore='',bracketAfter='',skipBefore=0,skipAfter=0;
+  if(displayParts){
+    const fn=displayParts.findIndex(p=>!p.bracket);
+    displayParts.forEach((p,i)=>{
+      if(p.bracket){
+        const span=`<span style="color:rgba(58,46,32,.38);font-size:.88em;">(${p.text})</span>`;
+        if(i<fn){bracketBefore+=span;skipBefore+=p.text.length;}
+        else{bracketAfter+=span;skipAfter+=p.text.length;}
+      }
+    });
+  }
+  let out='',pos=0,first=true;
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<pos)continue;
-    out+=word.slice(pos,s);
-    out+=`<span class="hl" style="color:${c};text-decoration-color:${c};">${word.slice(s,s+letters.length)}</span>`;
-    pos=s+letters.length;
+    // 括號前字母出現在底線字母前面的位置
+    const actualStart=s-skipBefore;
+    out+=word.slice(pos,actualStart);
+    const hlText=word.slice(s,s+chLen);
+    const hlSpan=`<span class="hl" style="color:${c};text-decoration-color:${c};">${hlText}</span>`;
+    out+=first&&displayParts?bracketBefore+hlSpan+bracketAfter:hlSpan;
+    first=false;
+    pos=s+chLen+skipAfter; // 跳過後方括號對應的字母
   }
   out+=word.slice(pos);
   return out;
@@ -1487,7 +1554,7 @@ function renderCards(){
       <div class="clv-badge" style="background:${cfg.c};">L${w.level}</div>
       <div class="c-pg" style="color:${cfg.c};">${w.phonicsGroup}</div>
       <div class="c-lt" style="color:${cfg.d};">${w.letters}</div>
-      <div class="c-word">${hlWord(w.word,w.letters,w.level,w.indices)}</div>
+      <div class="c-word">${hlWord(w.word,w.letters,w.level,w.indices,w.displayParts)}</div>
       <div class="c-snd" style="background:${cfg.l};color:${cfg.c};">🔊</div>
     </div>`;
   }).join('');
@@ -1771,7 +1838,7 @@ function renderGameGrid(){
       <div class="card-inner">
         <div class="card-back"><div class="card-back-inner"><div class="back-leaf"></div></div></div>
         <div class="card-front" style="background:${cfg.l};border:1.5px solid ${cfg.c}44;">
-          <div class="cf-word" style="font-size:11px;padding:0 3px;">${hlWord(c.word,c.letters,c.level,c.indices)}</div>
+          <div class="cf-word" style="font-size:11px;padding:0 3px;">${hlWord(c.word,c.letters,c.level,c.indices,c.displayParts)}</div>
         </div>
       </div>
     </div>`;
@@ -1830,7 +1897,7 @@ function updateCardDetail(i){
   const cfg=LVC[c.level];
   document.getElementById('cdPg').textContent=c.phonicsGroup;
   document.getElementById('cdPg').style.color=cfg.c;
-  document.getElementById('cdWord').innerHTML=hlWord(c.word,c.letters,c.level,c.indices);
+  document.getElementById('cdWord').innerHTML=hlWord(c.word,c.letters,c.level,c.indices,c.displayParts);
   document.getElementById('cardDetail').style.display='';
 }
 function speakSelected(){
@@ -2178,8 +2245,8 @@ function g2WordHtml(wordObj){
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<pos)continue;
     out+=`<span>${word.slice(pos,s)}</span>`;
-    out+=`<span class="hl" style="color:${cfg.c};text-decoration-color:${cfg.c};text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px;font-weight:900;">${word.slice(s,s+letters.length)}</span>`;
-    pos=s+letters.length;
+    out+=`<span class="hl" style="color:${cfg.c};text-decoration-color:${cfg.c};text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:2px;font-weight:900;">${word.slice(s,s+(letters==="1"?1:letters.length))}</span>`;
+    pos=s+(letters==="1"?1:letters.length);
   }
   out+=`<span>${word.slice(pos)}</span>`;
   return out;
@@ -2426,8 +2493,8 @@ function g3HlWord(wordObj){
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<pos)continue;
     out+=word.slice(pos,s);
-    out+=`<span class="hl" style="color:${cfg.c};text-decoration:underline;text-decoration-color:${cfg.c};text-decoration-thickness:2px;text-underline-offset:2px;font-weight:900;">${word.slice(s,s+letters.length)}</span>`;
-    pos=s+letters.length;
+    out+=`<span class="hl" style="color:${cfg.c};text-decoration:underline;text-decoration-color:${cfg.c};text-decoration-thickness:2px;text-underline-offset:2px;font-weight:900;">${word.slice(s,s+(letters==="1"?1:letters.length))}</span>`;
+    pos=s+(letters==="1"?1:letters.length);
   }
   out+=word.slice(pos);
   return out;
@@ -2626,14 +2693,27 @@ function g4RenderTurnInfo(){
 
 function g4HlWord(c){
   const col=LVC[c.level]?.c||'#333';
-  const{word,letters,indices}=c;
+  const{word,letters,indices,displayParts}=c;
   if(!indices||!indices.length)return`<span style="color:#3A2E20;">${word}</span>`;
-  let o='',p=0;
+  const chLen=letters==='1'?1:letters.length;
+  let bb='',ba='',skipB=0,skipA=0;
+  if(displayParts){
+    const fn=displayParts.findIndex(p=>!p.bracket);
+    displayParts.forEach((p,i)=>{
+      if(p.bracket){
+        const sp=`<span style="color:rgba(58,46,32,.38);font-size:.88em;">(${p.text})</span>`;
+        if(i<fn){bb+=sp;skipB+=p.text.length;}else{ba+=sp;skipA+=p.text.length;}
+      }
+    });
+  }
+  let o='',p=0,first=true;
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<p)continue;
-    if(s>p)o+=`<span style="color:#3A2E20;">${word.slice(p,s)}</span>`;
-    o+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+letters.length)}</span>`;
-    p=s+letters.length;
+    const as=s-skipB;
+    if(as>p)o+=`<span style="color:#3A2E20;">${word.slice(p,as)}</span>`;
+    const hl=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+chLen)}</span>`;
+    o+=first&&displayParts?bb+hl+ba:hl;
+    first=false;p=s+chLen+skipA;
   }
   if(p<word.length)o+=`<span style="color:#3A2E20;">${word.slice(p)}</span>`;
   return o;
@@ -3105,8 +3185,8 @@ function g5HlWord(c){
   for(const s of[...indices].sort((a,b)=>a-b)){
     if(s<p)continue;
     if(s>p)o+=`<span style="color:#3A2E20;">${word.slice(p,s)}</span>`;
-    o+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+letters.length)}</span>`;
-    p=s+letters.length;
+    o+=`<span class="hl" style="color:${col};text-decoration:underline;text-decoration-color:${col};text-decoration-thickness:1.5px;text-underline-offset:1px;font-weight:900;">${word.slice(s,s+(letters==="1"?1:letters.length))}</span>`;
+    p=s+(letters==="1"?1:letters.length);
   }
   if(p<word.length)o+=`<span style="color:#3A2E20;">${word.slice(p)}</span>`;
   return o;
